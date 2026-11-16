@@ -1,0 +1,43 @@
+nearest_cases = {
+    "Current mappings": ("current", "current"),
+    "IR nearest": ("nearest", "current"),
+    "CS nearest": ("current", "nearest"),
+    "Both nearest": ("nearest", "nearest"),
+}
+
+nearest_results = []
+nearest_losses = {}
+
+for name, (ir_method, cs_method) in nearest_cases.items():
+    calc = CsrbbEngine(
+        path_to_config=normal._config_path,
+        stress_mode=None,
+    )
+    calc.mt4_actual_dates = True
+    calc.mt4_ir_method = ir_method
+    calc.mt4_cs_method = cs_method
+    calc.run_all()
+
+    if calc._results is None or not np.isfinite(calc._results):
+        raise RuntimeError(f"{name} failed. Check the engine log.")
+
+    nearest_results.append({
+        "Test": name,
+        "HVaR": calc._results,
+    })
+
+    # Keep scenario losses so we can investigate the tail afterwards.
+    nearest_losses[name] = calc._daily_spreads.clone()
+
+nearest_summary = pl.DataFrame(nearest_results)
+baseline = nearest_results[0]["HVaR"]
+
+nearest_summary = nearest_summary.with_columns(
+    (pl.col("HVaR") - baseline).alias("Change EUR"),
+    (
+        100 * (pl.col("HVaR") / baseline - 1)
+        if baseline != 0 else pl.lit(None)
+    ).alias("Change %"),
+)
+
+display(nearest_summary)
